@@ -15,7 +15,7 @@ const db = knex({
 	}
 });
 
-db.select('*').from('users').then(data => {
+db.select('*').from('users_tb').then(data => {
 	console.log(data);
 });
 
@@ -23,83 +23,64 @@ const app = express();
 app.use(bodyParser.json());
 app.use(cors());
 
-const database = { //before database section
-	users: [
-		{
-			id: '12',
-			name: 'Mingau',
-			email: 'mingau@gato.com',
-			password: 'cookies',
-			entries: 0,
-			joined: new Date()
-		},
-		{
-			id: '13',
-			name: 'Tomtom',
-			email: 'tom@gato.com',
-			password: 'bags',
-			entries: 0,
-			joined: new Date()
-		}
-	],
-	login: [
-		{
-			id: '111',
-			hash: '',
-			email: 'email@email.com'
-		}
-	]
-}
-
 app.get('/', (req, res) => {
 	res.send(database.users);
 })
 
 app.post('/signin', (req, res) => {
-	if(req.body.email === database.users[0].email && 
-		req.body.password === database.users[0].password) {
-			res.json(database.users[0]);
-	} else {
-		res.status(400).json('error loggin in');
-	}
+	db.select('email', 'hash').from('login_tb')
+		.where('email', '=', req.body.email)
+		.then(data => {
+			const isValid = bcrypt.compareSync(req.body.password, data[0].hash);
+			if(isValid) {
+				return db.select('*').from('users_tb')
+					.where('email', '=', req.body.email)
+					.then(user => {
+						res.json(user[0])
+					})
+					.catch(err => res.status(400).json('incapaz de achar o user'))
+			} else {
+				res.status(400).json('credenciais errados')
+			}
+		})
+		.catch(err => res.status(400).json('credenciais errados, fora'))
 })
 
 app.post('/register', (req, res) => {
-	const { email, name, password } = req.body; //destructuring.
-	//`req.body`: input from Postman
-	// bcrypt.hash(password, null, null, function(err, hash) {
- //    // Store hash in your password DB.
- //    console.log(hash);
-	// });
-	
-	db('users')
-	.returning('*')
-	.insert({
-		email: email,
-		name: name,
-		joined: new Date()
-	})
-		.then(user => {
-			res.json(user[0]);
+	const { email, name, password } = req.body;
+	const hash = bcrypt.hashSync(password);
+	db.transaction(trx => {
+		trx.insert({
+			hash: hash,
+			email: email
 		})
-		.catch(err => {
-			res.status(400).json('Erro. Ja existe este cadastro em nosso sistema.');
-		});
-
-
-	//code do primeiro comment - melhor
-	// const retUser = JSON.parse(JSON.stringify(database.users[database.users.length-1]));//last item input
-	// retUser.password = '********';
-	// res.json(retUser);
-
-	//code do Instrutor
-	// res.json(database.users[database.users.length-1]); //last item input
+		.into('login_tb')
+		.returning('email')
+		.then(loginEmail => {
+			return trx('users_tb')
+				.returning('*')
+				.insert({
+					email: loginEmail[0],
+					name: name,
+					joined: new Date()
+				})
+				.then(user => {
+					res.json(user[0]);
+				})
+			
+		})
+		.then(trx.commit) // when pass, then insert to login
+		.catch(trx.rollback) //if not, then return to previous normal state
+	})
+	.catch(err => {
+		res.status(400).json('Erro. Ja existe este cadastro em nosso sistema.');
+	});
 })
 
 app.get('/profile/:id', (req, res) => {
 	const { id } = req.params; //grab from inputed params
 	let found = false;
-	db.select('*').from('users').where({
+	db.select('*').from('users_tb').where({
 		id: id // localhost:2000/profile/id | id = db : id = url
 	}).then(user => {
 		if(user.length) { // not 0
@@ -112,7 +93,7 @@ app.get('/profile/:id', (req, res) => {
 
 app.put('/image', (req, res) => {
 	const { id } = req.body;
-	db('users').where('id', '=', id)
+	db('users_tb').where('id', '=', id)
 	.increment('entries', 1)
 	.returning('entries')
 	.then(entries => {
@@ -120,16 +101,6 @@ app.put('/image', (req, res) => {
 	})
 	.catch(err => res.status(400).json('unable to get entries'))
 })
-
-
-
-// // Load hash from your password DB.
-// bcrypt.compare("bacon", hash, function(err, res) {
-//     // res == true
-// });
-// bcrypt.compare("veggies", hash, function(err, res) {
-//     // res = false
-// });
 
 app.listen(2000, () => {
 	console.log("Servidor ligado na porta 2000");
