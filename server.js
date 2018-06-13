@@ -55,7 +55,6 @@ app.get('/', (req, res) => {
 	res.send(database.users);
 })
 
-//signin --> POST = success/fail
 app.post('/signin', (req, res) => {
 	if(req.body.email === database.users[0].email && 
 		req.body.password === database.users[0].password) {
@@ -65,67 +64,61 @@ app.post('/signin', (req, res) => {
 	}
 })
 
-//register --> POST = user
 app.post('/register', (req, res) => {
 	const { email, name, password } = req.body; //destructuring.
 	//`req.body`: input from Postman
-	bcrypt.hash(password, null, null, function(err, hash) {
-    // Store hash in your password DB.
-    console.log(hash);
-	});
+	// bcrypt.hash(password, null, null, function(err, hash) {
+ //    // Store hash in your password DB.
+ //    console.log(hash);
+	// });
 	
-	database.users.push({
-		id: '15', //id harcoded
-		name: name, //from Postman req.
-		email: email, //idem
-		password: password, //idem
-		entries: 0,
+	db('users')
+	.returning('*')
+	.insert({
+		email: email,
+		name: name,
 		joined: new Date()
 	})
+		.then(user => {
+			res.json(user[0]);
+		})
+		.catch(err => {
+			res.status(400).json('Erro. Ja existe este cadastro em nosso sistema.');
+		});
+
 
 	//code do primeiro comment - melhor
-	const retUser = JSON.parse(JSON.stringify(database.users[database.users.length-1]));//last item input
-	retUser.password = '********';
-	res.json(retUser);
+	// const retUser = JSON.parse(JSON.stringify(database.users[database.users.length-1]));//last item input
+	// retUser.password = '********';
+	// res.json(retUser);
 
 	//code do Instrutor
 	// res.json(database.users[database.users.length-1]); //last item input
 })
 
-//profile/:userId --> GET = user
 app.get('/profile/:id', (req, res) => {
 	const { id } = req.params; //grab from inputed params
 	let found = false;
-	database.users.forEach(user => {
-		if(user.id === id) {
-			found = true;
-			return res.json(user);
-		}
-	})
-		console.log('fora if ' + found);
-
-	if(!found) { //(!false): if this condition is truthy.
-	// Also means, if OPPOSITE(!) of found.
-		res.status(400).json('not user found: ' + !found);
-		console.log('dentro if: ' + found);
-
-	}
+	db.select('*').from('users').where({
+		id: id // localhost:2000/profile/id | id = db : id = url
+	}).then(user => {
+		if(user.length) { // not 0
+			res.json(user[0]);
+ 		} else {
+ 			res.status(400).json('Not found');
+ 		}
+	}).catch(err => res.status(400).json('error getting user'))
 })
 
-//image --> PUT --> user
 app.put('/image', (req, res) => {
-	const { id } = req.body; //same as above, changed to .body
-	let found =false;
-	database.users.forEach(user => {
-		if(user.id === id) {
-			found = true;
-			user.entries--;
-			return res.json(user.entries);
-		}
+	const { id } = req.body;
+	db('users').where('id', '=', id)
+	.increment('entries', 1)
+	.returning('entries')
+	.then(entries => {
+		res.json(entries[0]);
 	})
-	if(!found) {
-		res.status(400).json('not user found - image');
-	}
+	.catch(err => res.status(400).json('unable to get entries'))
 })
 
 
