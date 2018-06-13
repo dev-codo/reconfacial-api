@@ -1,6 +1,9 @@
 const handleRegister = (req, res, db, bcrypt) => { //db, bcrypt: dependencies injection
 	const { email, name, password } = req.body;
 	const hash = bcrypt.hashSync(password);
+	if(!email || !name || !password) { //if empty
+		return res.status(400).json('empty field');
+	}
 	db.transaction(trx => {
 		trx.insert({
 			hash: hash,
